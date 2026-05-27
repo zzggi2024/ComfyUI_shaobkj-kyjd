@@ -120,7 +120,9 @@ function showAuthDialog(initialMessage = "") {
             confirmBtn.textContent = "确认";
         }
     });
+    overlay.appendChild(panel);
     document.body.appendChild(overlay);
+
     if (initialMessage) {
         setStatus(initialMessage);
     }
