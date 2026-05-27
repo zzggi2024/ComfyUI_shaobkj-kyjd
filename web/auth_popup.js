@@ -79,31 +79,39 @@ function showAuthDialog(initialMessage = "") {
         showing = false;
         overlay.remove();
     }
-    function reopenWithMessage(message) {
-        cleanup();
-        setTimeout(() => showAuthDialog(message), 300);
+    function setStatus(message, color = "#ffb4b4") {
+        statusEl.textContent = message || "";
+        statusEl.style.color = color;
     }
-    panel.querySelector('[data-action="cancel"]').addEventListener("click", () => reopenWithMessage("请先输入正确的授权码。"));
+    panel.querySelector('[data-action="cancel"]').addEventListener("click", () => {
+        setStatus("请先输入正确的授权码。");
+        inputEl.focus();
+    });
     overlay.addEventListener("click", (event) => {
-        if (event.target === overlay) reopenWithMessage("请先输入正确的授权码。");
+        if (event.target === overlay) {
+            setStatus("请先输入正确的授权码。");
+            inputEl.focus();
+        }
     });
     panel.addEventListener("submit", async (event) => {
         event.preventDefault();
         const accessKey = inputEl.value.trim();
         if (!accessKey) {
-            reopenWithMessage("授权码不能为空");
+            setStatus("授权码不能为空");
+            inputEl.focus();
             return;
         }
         confirmBtn.disabled = true;
         confirmBtn.textContent = "验证中...";
-        statusEl.textContent = "正在验证授权码...";
-        statusEl.style.color = "#aaa";
+        setStatus("正在验证授权码...", "#aaa");
         try {
             await verifyAccessKey(accessKey);
-            window.alert("恭喜，验证通过");
+            setStatus("恭喜，验证完成", "#8ee8a8");
+            window.alert("恭喜，验证完成");
             cleanup();
         } catch (_error) {
-            reopenWithMessage("授权码错误，请重新输入");
+            setStatus("授权码错误，请重新输入");
+            inputEl.focus();
         } finally {
             confirmBtn.disabled = false;
             confirmBtn.textContent = "确认";
@@ -111,7 +119,7 @@ function showAuthDialog(initialMessage = "") {
     });
     document.body.appendChild(overlay);
     if (initialMessage) {
-        window.alert(initialMessage);
+        setStatus(initialMessage);
     }
     setTimeout(() => inputEl.focus(), 50);
 }
