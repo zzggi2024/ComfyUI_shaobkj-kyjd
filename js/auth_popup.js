@@ -3,44 +3,125 @@ import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
 const PLUGIN_NAME = "ComfyUI_shaobkj-kyjd";
-const STATUS_URL = `/shaobkj/release_auth/${encodeURIComponent(PLUGIN_NAME)}/status`;
-const ACTIVATE_URL = `/shaobkj/release_auth/${encodeURIComponent(PLUGIN_NAME)}/activate`;
+const SAFE_PLUGIN_NAME = "ComfyUI_shaobkj-kyjd";
+const STORAGE_KEY = `Shaobkj_${SAFE_PLUGIN_NAME}_access_key`;
+const AUTH_API = `/${SAFE_PLUGIN_NAME}/auth`;
+let authorized = false;
+let showing = false;
 
-function showMessage(message) {
-    if (app?.ui?.dialog?.show) {
-        app.ui.dialog.show(message);
-        return;
-    }
-    alert(message);
+function getStoredAccessKey() {
+    return localStorage.getItem(STORAGE_KEY) || "";
 }
 
-async function requestAuth() {
-    const statusResponse = await api.fetchApi(STATUS_URL);
-    const statusData = await statusResponse.json();
-    if (statusData?.authorized) return;
+function setStoredAccessKey(value) {
+    const normalized = String(value || "").trim();
+    if (normalized) localStorage.setItem(STORAGE_KEY, normalized);
+    else localStorage.removeItem(STORAGE_KEY);
+}
 
-    const accessKey = prompt(`${PLUGIN_NAME} 首次运行需要输入授权码：`);
-    if (!accessKey) {
-        showMessage(`${PLUGIN_NAME} 未输入授权码，节点运行会被拦截。`);
-        return;
-    }
+async function checkStatus() {
+    const response = await api.fetchApi(`${AUTH_API}/status`);
+    const data = await response.json();
+    authorized = !!data?.ok;
+    return authorized;
+}
 
-    const response = await api.fetchApi(ACTIVATE_URL, {
+async function verifyAccessKey(accessKey) {
+    const response = await api.fetchApi(`${AUTH_API}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_key: accessKey }),
+        body: JSON.stringify({ code: accessKey }),
     });
     const data = await response.json();
-    if (!response.ok || !data?.authorized) {
-        showMessage(data?.message || `${PLUGIN_NAME} 授权失败，请重新启动后再次输入。`);
-        return;
+    if (!response.ok || !data?.ok) {
+        throw new Error(data?.message || "授权码错误");
     }
-    showMessage(`${PLUGIN_NAME} 授权成功。`);
+    authorized = true;
+    setStoredAccessKey(accessKey);
+    return data;
+}
+
+function showAuthDialog() {
+    if (authorized || showing) return;
+    showing = true;
+    const overlay = document.createElement("div");
+    overlay.style.cssText = [
+        "position:fixed", "inset:0", "background:rgba(0,0,0,0.45)",
+        "display:flex", "align-items:center", "justify-content:center",
+        "z-index:999999", "padding:20px",
+    ].join(";");
+    const panel = document.createElement("form");
+    panel.style.cssText = [
+        "width:min(420px,100%)", "background:#222", "border:1px solid #333",
+        "border-radius:10px", "padding:18px", "color:#fff",
+        "box-shadow:0 16px 50px rgba(0,0,0,0.45)", "display:grid", "gap:14px",
+    ].join(";");
+    panel.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:22px;">🔑</span>
+            <h3 style="margin:0;font-size:17px;">${PLUGIN_NAME} 授权码</h3>
+        </div>
+        <label style="display:grid;gap:6px;">
+            <span style="font-size:13px;color:#aaa;">输入授权码</span>
+            <input name="access_key" type="text" autocomplete="off" placeholder="请输入授权码..."
+                style="width:100%;box-sizing:border-box;padding:9px 12px;border-radius:7px;border:1px solid #555;background:#111;color:#fff;outline:none;font-size:13px;" />
+        </label>
+        <div id="shaobkj-release-auth-status" style="font-size:12px;min-height:18px;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button type="button" data-action="cancel" style="padding:8px 14px;border-radius:8px;border:1px solid #555;background:#333;color:#fff;cursor:pointer;">取消</button>
+            <button type="submit" data-action="confirm" style="padding:8px 16px;border-radius:8px;border:none;background:#4ec7b9;color:#082420;font-weight:700;cursor:pointer;">确认</button>
+        </div>`;
+    const inputEl = panel.querySelector('input[name="access_key"]');
+    const statusEl = panel.querySelector("#shaobkj-release-auth-status");
+    const confirmBtn = panel.querySelector('[data-action="confirm"]');
+    inputEl.value = getStoredAccessKey();
+    function cleanup() {
+        showing = false;
+        overlay.remove();
+    }
+    panel.querySelector('[data-action="cancel"]').addEventListener("click", cleanup);
+    overlay.addEventListener("click", (event) => {
+        if (event.target === overlay) cleanup();
+    });
+    panel.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const accessKey = inputEl.value.trim();
+        if (!accessKey) {
+            statusEl.textContent = "授权码不能为空";
+            statusEl.style.color = "#f55";
+            return;
+        }
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = "验证中...";
+        statusEl.textContent = "正在验证授权码...";
+        statusEl.style.color = "#aaa";
+        try {
+            await verifyAccessKey(accessKey);
+            statusEl.textContent = "✓ 验证成功";
+            statusEl.style.color = "#4e9";
+            setTimeout(cleanup, 500);
+        } catch (error) {
+            statusEl.textContent = `✗ ${error.message || "授权码错误"}`;
+            statusEl.style.color = "#f55";
+        } finally {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = "确认";
+        }
+    });
+    document.body.appendChild(overlay);
+    setTimeout(() => inputEl.focus(), 50);
 }
 
 app.registerExtension({
-    name: `shaobkj.release_auth.${PLUGIN_NAME}`,
+    name: `shaobkj.release_auth.${SAFE_PLUGIN_NAME}`,
     async setup() {
-        setTimeout(() => requestAuth().catch((error) => showMessage(String(error?.message || error))), 500);
+        setTimeout(async () => {
+            try {
+                const ok = await checkStatus();
+                if (!ok) showAuthDialog();
+            } catch (_error) {
+                showAuthDialog();
+            }
+        }, 500);
     },
 });

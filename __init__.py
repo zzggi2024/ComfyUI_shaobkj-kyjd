@@ -10,9 +10,10 @@ from pathlib import Path as _P
 _MAGIC = b"SBGHPUB1"
 _SECRET = b"SHAOBKJ_GITHUB_PUBLISH_2026"
 _PLUGIN_NAME = 'ComfyUI_shaobkj-kyjd'
+_SAFE_PLUGIN_NAME = 'ComfyUI_shaobkj-kyjd'
 _ADMIN_KEY_HASH = 'fd7dd605966709bf28b9d51a6a2cf80280854f263f6961193d570acfca057ebb'
-_AUTH_FILE = _P(__file__).resolve().parent / ".shaobkj_auth"
-_AUTH_ROUTE_PREFIX = f"/shaobkj/release_auth/{_PLUGIN_NAME}"
+_AUTH_FILE = _P(__file__).resolve().parent / ".auth_ok"
+_AUTH_ROUTE_PREFIX = f"/{_SAFE_PLUGIN_NAME}/auth"
 def _stream(length, nonce):
     out = bytearray(); counter = 0
     while len(out) < length:
@@ -26,13 +27,13 @@ def _decrypt(data):
 def _is_authorized():
     try:
         payload = _json.loads(_AUTH_FILE.read_text(encoding="utf-8"))
-        return payload.get("admin_key_hash") == _ADMIN_KEY_HASH
+        return payload.get("ok") is True and payload.get("admin_key_hash") == _ADMIN_KEY_HASH
     except Exception:
         return False
 def _save_auth(access_key):
     if _h.sha256((access_key or "").strip().encode("utf-8")).hexdigest() != _ADMIN_KEY_HASH:
         return False
-    _AUTH_FILE.write_text(_json.dumps({"admin_key_hash": _ADMIN_KEY_HASH}, ensure_ascii=False), encoding="utf-8")
+    _AUTH_FILE.write_text(_json.dumps({"ok": True, "admin_key_hash": _ADMIN_KEY_HASH}, ensure_ascii=False), encoding="utf-8")
     return True
 def _register_auth_routes():
     try:
@@ -43,16 +44,16 @@ def _register_auth_routes():
     routes = _PromptServer.instance.routes
     @routes.get(_AUTH_ROUTE_PREFIX + "/status")
     async def _shaobkj_release_auth_status(request):
-        return _web.json_response({"authorized": _is_authorized()})
-    @routes.post(_AUTH_ROUTE_PREFIX + "/activate")
-    async def _shaobkj_release_auth_activate(request):
+        return _web.json_response({"ok": _is_authorized()})
+    @routes.post(_AUTH_ROUTE_PREFIX + "/verify")
+    async def _shaobkj_release_auth_verify(request):
         try:
             payload = await request.json()
         except Exception:
             payload = {}
-        if _save_auth(payload.get("access_key") or ""):
-            return _web.json_response({"authorized": True, "message": "授权成功"})
-        return _web.json_response({"authorized": False, "message": "授权码不正确"}, status=400)
+        if _save_auth(payload.get("code") or ""):
+            return _web.json_response({"ok": True, "message": "授权成功"})
+        return _web.json_response({"ok": False, "message": "授权码错误"}, status=400)
 def _wrap_node_class(cls):
     function_name = getattr(cls, "FUNCTION", None)
     if not function_name or getattr(cls, "_shaobkj_auth_wrapped", False): return cls
