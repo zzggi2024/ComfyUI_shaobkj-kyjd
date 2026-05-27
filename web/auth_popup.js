@@ -48,13 +48,16 @@ function showAuthDialog(initialMessage = "") {
     overlay.style.cssText = [
         "position:fixed", "inset:0", "background:rgba(0,0,0,0.45)",
         "display:flex", "align-items:center", "justify-content:center",
-        "z-index:999999", "padding:20px",
+        "z-index:999999", "padding:20px", "pointer-events:auto",
+
     ].join(";");
     const panel = document.createElement("form");
     panel.style.cssText = [
         "width:min(420px,100%)", "background:#222", "border:1px solid #333",
         "border-radius:10px", "padding:18px", "color:#fff",
         "box-shadow:0 16px 50px rgba(0,0,0,0.45)", "display:grid", "gap:14px",
+        "position:relative", "z-index:1000000", "pointer-events:auto",
+
     ].join(";");
     panel.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px;">
