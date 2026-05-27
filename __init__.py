@@ -61,7 +61,7 @@ def _wrap_node_class(cls):
     if not callable(original): return cls
     def _wrapped(self, *args, **kwargs):
         if not _is_authorized():
-            raise PermissionError(f"{_PLUGIN_NAME} 首次运行需要输入授权码，请先在弹窗中完成授权。")
+            raise PermissionError("未授权")
         return original(self, *args, **kwargs)
     setattr(cls, function_name, _wrapped)
     setattr(cls, "_shaobkj_auth_wrapped", True)

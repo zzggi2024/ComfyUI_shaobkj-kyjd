@@ -41,7 +41,7 @@ async function verifyAccessKey(accessKey) {
     return data;
 }
 
-function showAuthDialog() {
+function showAuthDialog(initialMessage = "") {
     if (authorized || showing) return;
     showing = true;
     const overlay = document.createElement("div");
@@ -79,16 +79,19 @@ function showAuthDialog() {
         showing = false;
         overlay.remove();
     }
-    panel.querySelector('[data-action="cancel"]').addEventListener("click", cleanup);
+    function reopenWithMessage(message) {
+        cleanup();
+        setTimeout(() => showAuthDialog(message), 300);
+    }
+    panel.querySelector('[data-action="cancel"]').addEventListener("click", () => reopenWithMessage("请先输入正确的授权码。"));
     overlay.addEventListener("click", (event) => {
-        if (event.target === overlay) cleanup();
+        if (event.target === overlay) reopenWithMessage("请先输入正确的授权码。");
     });
     panel.addEventListener("submit", async (event) => {
         event.preventDefault();
         const accessKey = inputEl.value.trim();
         if (!accessKey) {
-            statusEl.textContent = "授权码不能为空";
-            statusEl.style.color = "#f55";
+            reopenWithMessage("授权码不能为空");
             return;
         }
         confirmBtn.disabled = true;
@@ -97,18 +100,19 @@ function showAuthDialog() {
         statusEl.style.color = "#aaa";
         try {
             await verifyAccessKey(accessKey);
-            statusEl.textContent = "✓ 验证成功";
-            statusEl.style.color = "#4e9";
-            setTimeout(cleanup, 500);
-        } catch (error) {
-            statusEl.textContent = `✗ ${error.message || "授权码错误"}`;
-            statusEl.style.color = "#f55";
+            window.alert("恭喜，验证通过");
+            cleanup();
+        } catch (_error) {
+            reopenWithMessage("授权码错误，请重新输入");
         } finally {
             confirmBtn.disabled = false;
             confirmBtn.textContent = "确认";
         }
     });
     document.body.appendChild(overlay);
+    if (initialMessage) {
+        window.alert(initialMessage);
+    }
     setTimeout(() => inputEl.focus(), 50);
 }
 
