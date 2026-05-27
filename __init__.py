@@ -5,13 +5,16 @@ import importlib.util as _iu
 import json as _json
 import os as _os
 import sys as _s
+import urllib.request as _ur
+import urllib.error as _ue
 import zlib as _z
 from pathlib import Path as _P
 _MAGIC = b"SBGHPUB1"
 _SECRET = b"SHAOBKJ_GITHUB_PUBLISH_2026"
 _PLUGIN_NAME = 'ComfyUI_shaobkj-kyjd'
 _SAFE_PLUGIN_NAME = 'ComfyUI_shaobkj-kyjd'
-_ADMIN_KEY_HASH = 'fd7dd605966709bf28b9d51a6a2cf80280854f263f6961193d570acfca057ebb'
+_AUTH_SCOPE = 'ACCOUNT:f5ab687684789fee24b634c1dd2fee7a8bad75516d71477a583dbbb7820e6b35'
+_API_BASE = "http://49.235.137.221:8000"
 _AUTH_FILE = _P(__file__).resolve().parent / ".auth_ok"
 _AUTH_ROUTE_PREFIX = f"/{_SAFE_PLUGIN_NAME}/auth"
 def _stream(length, nonce):
@@ -27,13 +30,30 @@ def _decrypt(data):
 def _is_authorized():
     try:
         payload = _json.loads(_AUTH_FILE.read_text(encoding="utf-8"))
-        return payload.get("ok") is True and payload.get("admin_key_hash") == _ADMIN_KEY_HASH
+        return payload.get("ok") is True and payload.get("auth_scope") == _AUTH_SCOPE
     except Exception:
         return False
-def _save_auth(access_key):
-    if _h.sha256((access_key or "").strip().encode("utf-8")).hexdigest() != _ADMIN_KEY_HASH:
+def _device_payload():
+    try:
+        import uuid as _uuid
+        return {"device_id": f"RELEASE-{_SAFE_PLUGIN_NAME}-{_uuid.getnode():012x}", "device_type": "local", "instance_id": ""}
+    except Exception:
+        return {"device_id": f"RELEASE-{_SAFE_PLUGIN_NAME}-LOCAL", "device_type": "local", "instance_id": ""}
+def _remote_validate(access_key):
+    access_key = (access_key or "").strip()
+    if not access_key: return False
+    body = _json.dumps({"code": _AUTH_SCOPE, "access_key": access_key, "key": access_key, **_device_payload()}, ensure_ascii=False).encode("utf-8")
+    request = _ur.Request(_API_BASE + "/Shaobkj/api/access/validate", data=body, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with _ur.urlopen(request, timeout=15) as response:
+            data = _json.loads(response.read().decode("utf-8"))
+    except Exception:
         return False
-    _AUTH_FILE.write_text(_json.dumps({"ok": True, "admin_key_hash": _ADMIN_KEY_HASH}, ensure_ascii=False), encoding="utf-8")
+    return bool(data.get("valid")) and data.get("status") == "active"
+def _save_auth(access_key):
+    if not _remote_validate(access_key):
+        return False
+    _AUTH_FILE.write_text(_json.dumps({"ok": True, "auth_scope": _AUTH_SCOPE}, ensure_ascii=False), encoding="utf-8")
     return True
 def _register_auth_routes():
     try:
